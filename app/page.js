@@ -13,7 +13,8 @@ export default function PitaToscaDashboard() {
   });
   const [historyData, setHistoryData] = useState([]);
   const [originalHistoryData, setOriginalHistoryData] = useState(null);
-  const [referenceDate, setReferenceDate] = useState(null); // State untuk menyimpan tanggal referensi
+  const [referenceDate, setReferenceDate] = useState(null);
+  const [initialPredictionDate, setInitialPredictionDate] = useState(null);
 
   // Fungsi untuk mereset riwayat dan data di Firebase
   const resetHistory = () => {
@@ -27,7 +28,9 @@ export default function PitaToscaDashboard() {
     // Reset data di Firebase
     set(readingsRef, null);
     // Atur ulang tanggal referensi ke waktu saat ini saat reset
-    setReferenceDate(Date.now());
+    const newRefDate = Date.now();
+    setReferenceDate(newRefDate);
+    setInitialPredictionDate(new Date(newRefDate + 7 * 24 * 60 * 60 * 1000));
   };
 
   // Fungsi untuk undo reset
@@ -53,6 +56,7 @@ export default function PitaToscaDashboard() {
       setOriginalHistoryData(null);
       // Kembalikan tanggal referensi ke nilai awal (opsional, bisa disesuaikan)
       setReferenceDate(null); // Atau simpan referenceDate sebelum reset jika ingin dikembalikan
+      setInitialPredictionDate(null);
     }
   };
 
@@ -85,11 +89,14 @@ export default function PitaToscaDashboard() {
     const predictedDosage = calculatePredictedDosage(predictedBpm, predictedTremor);
 
     // Gunakan tanggal referensi untuk menghitung tanggal prediksi
-    const refDate = referenceDate || Date.now(); // Gunakan Date.now() jika referenceDate belum diatur
-    if (!referenceDate && historyData.length > 0) {
-      setReferenceDate(Date.now()); // Set referenceDate saat ada data pertama kali
+    let predictionDate;
+    if (!initialPredictionDate) {
+      const newPredDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      setInitialPredictionDate(newPredDate);
+      predictionDate = newPredDate;
+    } else {
+      predictionDate = initialPredictionDate;
     }
-    const predictionDate = new Date(refDate + 7 * 24 * 60 * 60 * 1000); // 7 hari dari tanggal referensi
 
     return {
       bpm: predictedBpm,
