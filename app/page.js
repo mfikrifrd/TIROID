@@ -63,9 +63,9 @@ export default function PitaToscaDashboard() {
   };
 
   const getTremorStatus = (tremor) => {
-    if (tremor <= 5) return { text: "Low", color: "text-green-500" };
-    if (tremor >= 8) return { text: "High", color: "text-red-500" };
-    return { text: "Normal", color: "text-yellow-500" };
+    if (tremor <= 5) return { text: "Mild", color: "text-green-500" };
+    if (tremor >= 8) return { text: "Severe", color: "text-red-500" };
+    return { text: "Moderate", color: "text-yellow-500" };
   };
 
   const getDosageStatus = (dosage) => {
