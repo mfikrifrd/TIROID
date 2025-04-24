@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { database } from "../app/config/firebase";
-import { ref, onValue, off, set } from "firebase/database";
+import { ref, onValue, off, set, update } from "firebase/database";
 
 export default function PitaToscaDashboard() {
   const [profileImage, setProfileImage] = useState("/tiroid.png");
@@ -10,53 +10,84 @@ export default function PitaToscaDashboard() {
     bpm: 0,
     tremor: 0,
     dosage: 0,
+    condition: "",
   });
   const [historyData, setHistoryData] = useState([]);
   const [originalHistoryData, setOriginalHistoryData] = useState(null);
   const [referenceDate, setReferenceDate] = useState(null);
   const [initialPredictionDate, setInitialPredictionDate] = useState(null);
 
-  // Fungsi untuk mereset riwayat dan data di Firebase
   const resetHistory = () => {
     const patientId = "patient001";
     const readingsRef = ref(database, `/patients/${patientId}/readings`);
 
-    // Simpan data asli sebelum reset
-    setOriginalHistoryData(historyData);
-    // Kosongkan riwayat lokal
+    if (historyData.length > 0) {
+      console.log("Saving history data before reset:", historyData);
+      setOriginalHistoryData([...historyData]);
+    } else {
+      console.log("No history data to save before reset.");
+      setOriginalHistoryData(null);
+    }
+
     setHistoryData([]);
-    // Reset data di Firebase
+    setSensorData({ bpm: 0, tremor: 0, dosage: 0, condition: "" });
     set(readingsRef, null);
-    // Atur ulang tanggal referensi ke waktu saat ini saat reset
     const newRefDate = Date.now();
     setReferenceDate(newRefDate);
-    setInitialPredictionDate(new Date(newRefDate + 7 * 24 * 60 * 60 * 1000));
+    const newPredDate = new Date(newRefDate + 10 * 24 * 60 * 60 * 1000);
+    setInitialPredictionDate(newPredDate);
   };
 
-  // Fungsi untuk undo reset
-  const undoReset = () => {
-    if (originalHistoryData) {
+  const undoReset = async () => {
+    if (originalHistoryData && originalHistoryData.length > 0) {
       const patientId = "patient001";
       const readingsRef = ref(database, `/patients/${patientId}/readings`);
 
-      // Kembalikan data ke Firebase
+      console.log("Restoring data:", originalHistoryData);
+
       const dataToRestore = {};
       originalHistoryData.forEach((item) => {
         dataToRestore[item.id] = {
-          bpm: item.bpm,
-          tremor: item.tremor,
-          dosage: item.dosage,
-          timestamp: item.timestamp,
+          bpm: item.bpm || 0,
+          tremor: item.tremor || 0,
+          dosage: item.dosage || 0,
+          timestamp: item.timestamp || new Date().toISOString(),
+          condition: item.condition || "normal_activity",
         };
       });
-      set(readingsRef, dataToRestore);
 
-      // Kembalikan data lokal
-      setHistoryData(originalHistoryData);
-      setOriginalHistoryData(null);
-      // Kembalikan tanggal referensi ke nilai awal (opsional, bisa disesuaikan)
-      setReferenceDate(null); // Atau simpan referenceDate sebelum reset jika ingin dikembalikan
-      setInitialPredictionDate(null);
+      try {
+        await set(readingsRef, dataToRestore);
+        console.log("Data successfully restored to Firebase.");
+
+        const restoredData = Object.entries(dataToRestore)
+          .map(([key, value]) => ({
+            id: key,
+            ...value,
+          }))
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        setHistoryData(restoredData);
+        if (restoredData.length > 0) {
+          setSensorData({
+            bpm: restoredData[0].bpm,
+            tremor: restoredData[0].tremor,
+            dosage: restoredData[0].dosage,
+            condition: restoredData[0].condition,
+          });
+        }
+
+        setOriginalHistoryData(null);
+        setReferenceDate(null);
+
+        const firstTimestamp = new Date(restoredData[0].timestamp).getTime();
+        const restoredPredDate = new Date(firstTimestamp + 10 * 24 * 60 * 60 * 1000);
+        setInitialPredictionDate(restoredPredDate);
+      } catch (error) {
+        console.error("Error restoring data to Firebase:", error);
+      }
+    } else {
+      console.log("No data to restore.");
     }
   };
 
@@ -78,45 +109,105 @@ export default function PitaToscaDashboard() {
     return { text: "Normal", color: "text-green-500" };
   };
 
-  const predictNextValues = () => {
-    if (historyData.length < 3) return null;
-    const recentData = historyData.slice(-3);
-    const bpmChange = (recentData[2].bpm - recentData[0].bpm) / 2;
-    const tremorChange = (recentData[2].tremor - recentData[0].tremor) / 2;
-    const predictedBpm = Math.round((recentData[2].bpm + bpmChange) * 10) / 10;
-    const predictedTremor =
-      Math.round((recentData[2].tremor + tremorChange) * 100) / 100;
-    const predictedDosage = calculatePredictedDosage(predictedBpm, predictedTremor);
+  const updateCondition = (readingId, newCondition) => {
+    const patientId = "patient001";
+    const readingRef = ref(database, `/patients/${patientId}/readings/${readingId}`);
+    update(readingRef, { condition: newCondition });
+  };
 
-    // Gunakan tanggal referensi untuk menghitung tanggal prediksi
-    let predictionDate;
-    if (!initialPredictionDate) {
-      const newPredDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      setInitialPredictionDate(newPredDate);
-      predictionDate = newPredDate;
-    } else {
-      predictionDate = initialPredictionDate;
-    }
+  const calculateSimpleAverage = (data, key) => {
+    if (data.length === 0) return 0;
+    const sum = data.reduce((acc, item) => acc + (item[key] || 0), 0);
+    return sum / data.length;
+  };
+
+  const roundToNearest5 = (num) => {
+    return Math.round(num / 5) * 5;
+  };
+
+  const trapezoidalMembership = (x, a, b, c, d) => {
+    if (x <= a || x >= d) return 0;
+    if (x >= b && x <= c) return 1;
+    if (x > a && x < b) return (x - a) / (b - a);
+    if (x > c && x < d) return (d - x) / (d - c);
+    return 0;
+  };
+
+  const applyFuzzyLogic = (bpm, tremor) => {
+    const bpmMembership = {
+      rendah: trapezoidalMembership(bpm, 40, 40, 50, 60),
+      normal: trapezoidalMembership(bpm, 60, 70, 80, 90),
+      tinggi: trapezoidalMembership(bpm, 90, 120, 180, 180),
+    };
+
+    const tremorMembership = {
+      ringan: trapezoidalMembership(tremor, 3, 4, 5, 5),
+      sedang: trapezoidalMembership(tremor, 3, 6.5, 8, 8),
+      berat: trapezoidalMembership(tremor, 8, 10, 12, 12),
+    };
+
+    const rules = [
+      { if: { bpm: "rendah", tremor: "ringan" }, then: { dosage: "rendah" } },
+      { if: { bpm: "rendah", tremor: "sedang" }, then: { dosage: "rendah" } },
+      { if: { bpm: "rendah", tremor: "berat" }, then: { dosage: "sedang" } },
+      { if: { bpm: "normal", tremor: "ringan" }, then: { dosage: "rendah" } },
+      { if: { bpm: "normal", tremor: "sedang" }, then: { dosage: "sedang" } },
+      { if: { bpm: "normal", tremor: "berat" }, then: { dosage: "tinggi" } },
+      { if: { bpm: "tinggi", tremor: "ringan" }, then: { dosage: "sedang" } },
+      { if: { bpm: "tinggi", tremor: "sedang" }, then: { dosage: "tinggi" } },
+      { if: { bpm: "tinggi", tremor: "berat" }, then: { dosage: "tinggi" } },
+    ];
+
+    const activations = rules.map(rule => {
+      const bpmDegree = bpmMembership[rule.if.bpm];
+      const tremorDegree = tremorMembership[rule.if.tremor];
+      const activation = Math.min(bpmDegree, tremorDegree);
+      return { activation, output: rule.then };
+    });
+
+    const outputRanges = {
+      dosage: {
+        rendah: 5,
+        sedang: 15,
+        tinggi: 30,
+      },
+    };
+
+    let dosageSum = 0, dosageWeight = 0;
+    activations.forEach(({ activation, output }) => {
+      dosageSum += outputRanges.dosage[output.dosage] * activation;
+      dosageWeight += activation;
+    });
+
+    const predictedDosage = dosageWeight > 0 ? dosageSum / dosageWeight : 10;
 
     return {
-      bpm: predictedBpm,
-      tremor: predictedTremor,
-      dosage: predictedDosage,
+      bpm: Math.round(bpm * 10) / 10,
+      tremor: Math.round(tremor * 100) / 100,
+      dosage: roundToNearest5(predictedDosage),
+    };
+  };
+
+  const predictNextValues = () => {
+    if (historyData.length < 1) return null;
+
+    const avgBpm = calculateSimpleAverage(historyData, "bpm");
+    const avgTremor = calculateSimpleAverage(historyData, "tremor");
+
+    const { bpm, tremor, dosage } = applyFuzzyLogic(avgBpm, avgTremor);
+
+    const predictionDate = initialPredictionDate;
+
+    return {
+      bpm,
+      tremor,
+      dosage,
       date: predictionDate.toLocaleDateString("en-ID", {
         year: "numeric",
         month: "short",
         day: "numeric",
       }),
     };
-  };
-
-  const calculatePredictedDosage = (bpm, tremor) => {
-    let dosage = 10;
-    if (bpm < 60) dosage -= 2;
-    else if (bpm > 90) dosage += 5;
-    if (tremor < 5) dosage -= 2;
-    else if (tremor > 8) dosage += 5;
-    return Math.round(dosage * 10) / 10;
   };
 
   useEffect(() => {
@@ -133,18 +224,30 @@ export default function PitaToscaDashboard() {
           }))
           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
+        console.log("Data from Firebase:", dataArray);
+
         if (dataArray.length > 0) {
           setSensorData({
             bpm: dataArray[0].bpm,
             tremor: dataArray[0].tremor,
             dosage: dataArray[0].dosage,
+            condition: dataArray[0].condition || "normal_activity",
           });
+
+          if (!initialPredictionDate && !referenceDate) {
+            const firstTimestamp = new Date(dataArray[0].timestamp).getTime();
+            const predDate = new Date(firstTimestamp + 10 * 24 * 60 * 60 * 1000);
+            setInitialPredictionDate(predDate);
+          }
         }
         setHistoryData(dataArray);
       } else {
-        setSensorData({ bpm: 0, tremor: 0, dosage: 0 });
+        console.log("No data in Firebase, resetting local state.");
+        setSensorData({ bpm: 0, tremor: 0, dosage: 0, condition: "" });
         if (!originalHistoryData) setHistoryData([]);
       }
+    }, (error) => {
+      console.error("Error fetching data from Firebase:", error);
     });
 
     return () => off(readingsRef);
@@ -277,7 +380,7 @@ export default function PitaToscaDashboard() {
                       Reset History
                     </button>
                   )}
-                  {originalHistoryData && (
+                  {originalHistoryData && originalHistoryData.length > 0 && (
                     <button
                       onClick={undoReset}
                       className="bg-blue-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-600"
@@ -288,36 +391,50 @@ export default function PitaToscaDashboard() {
                 </div>
               </div>
               <div className="overflow-y-auto max-h-60">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[150px]">
                         Date
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[140px]">
+                        Condition
+                      </th>
+                      <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">
                         Heart Rate
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
                         Tremor
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
                         Dosage
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {historyData.slice(0, 30).map((item, index) => (
+                    {historyData.slice(0, 100).map((item, index) => (
                       <tr key={item.id || index}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-2 py-4 whitespace-normal text-sm text-gray-500 w-[150px]">
                           {item.timestamp}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-2 py-4 whitespace-normal text-sm text-gray-500 w-[140px]">
+                          <select
+                            value={item.condition}
+                            onChange={(e) => updateCondition(item.id, e.target.value)}
+                            className="border border-gray-300 rounded-md text-gray-700 p-1 w-full text-sm"
+                          >
+                            <option value="post_exercise">After Sport</option>
+                            <option value="post_medication">After Medicine</option>
+                            <option value="normal_activity">Normal Activity</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-4 whitespace-normal text-sm text-gray-500 w-[110px]">
                           {item.bpm.toFixed(1)} bpm
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-2 py-4 whitespace-normal text-sm text-gray-500 w-[100px]">
                           {item.tremor.toFixed(2)} Hz
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-2 py-4 whitespace-normal text-sm text-gray-500 w-[100px]">
                           {item.dosage.toFixed(1)} mg
                         </td>
                       </tr>
@@ -328,57 +445,63 @@ export default function PitaToscaDashboard() {
             </div>
 
             <div className="bg-white p-4 rounded-lg shadow-md w-[340px] h-[320px]">
-              <h2 className="text-lg font-semibold text-gray-800 mb-2">
-                AI Prediction
-              </h2>
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="text-lg font-semibold text-gray-800">AI Prediction</h2>
+              </div>
               <div className="overflow-hidden">
                 {prediction ? (
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-700 mb-2">
-                      Predicted for:{" "}
-                      <span className="font-medium">{prediction.date}</span>
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Heart Rate:</span>
-                        <span
-                          className={`text-sm font-medium ${getHeartRateStatus(
-                            prediction.bpm
-                          ).color}`}
-                        >
-                          {prediction.bpm.toFixed(1)} bpm
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Tremor:</span>
-                        <span
-                          className={`text-sm font-medium ${getTremorStatus(
-                            prediction.tremor
-                          ).color}`}
-                        >
-                          {prediction.tremor.toFixed(2)} Hz
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">
-                          Recommended Dose:
-                        </span>
-                        <span
-                          className={`text-sm font-medium ${getDosageStatus(
-                            prediction.dosage
-                          ).color}`}
-                        >
-                          {prediction.dosage.toFixed(1)} mg
-                        </span>
-                      </div>
+                  prediction.error ? (
+                    <div className="flex items-center justify-center h-48">
+                      <p className="text-sm text-gray-500">{prediction.error}</p>
                     </div>
-                    <div className="mt-4 p-2 bg-blue-50 rounded border border-blue-100">
-                      <p className="text-xs text-blue-700">
-                        This prediction is based on your recent measurement trends.
-                        Always consult your doctor before changing medication.
+                  ) : (
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <p className="text-sm text-gray-700 mb-2">
+                        Predicted for:{" "}
+                        <span className="font-medium">{prediction.date}</span>
                       </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Heart Rate:</span>
+                          <span
+                            className={`text-sm font-medium ${getHeartRateStatus(
+                              prediction.bpm
+                            ).color}`}
+                          >
+                            {prediction.bpm.toFixed(1)} bpm
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Tremor:</span>
+                          <span
+                            className={`text-sm font-medium ${getTremorStatus(
+                              prediction.tremor
+                            ).color}`}
+                          >
+                            {prediction.tremor.toFixed(2)} Hz
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">
+                            Recommended Dose:
+                          </span>
+                          <span
+                            className={`text-sm font-medium ${getDosageStatus(
+                              prediction.dosage
+                            ).color}`}
+                          >
+                            {prediction.dosage} mg
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-4 p-2 bg-blue-50 rounded border border-blue-100">
+                        <p className="text-xs text-blue-700">
+                          This prediction is based on your recent measurement trends.
+                          Always consult your doctor before changing medication.
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )
                 ) : (
                   <div className="flex items-center justify-center h-48">
                     <p className="text-sm text-gray-500">
