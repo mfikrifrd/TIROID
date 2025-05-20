@@ -106,7 +106,7 @@ export default function PitaToscaDashboard() {
   const getDosageStatus = (dosage) => {
     if (dosage <= 10) return { text: "Low", color: "text-green-500" };
     if (dosage >= 20) return { text: "High", color: "text-red-500" };
-    return { text: "Normal", color: "text-green-500" };
+    return { text: "Medium", color: "text-green-500" };
   };
 
   const updateCondition = (readingId, newCondition) => {
