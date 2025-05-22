@@ -106,7 +106,7 @@ export default function PitaToscaDashboard() {
   const getDosageStatus = (dosage) => {
     if (dosage <= 10) return { text: "Low", color: "text-green-500" };
     if (dosage >= 20) return { text: "High", color: "text-red-500" };
-    return { text: "Medium", color: "text-green-500" };
+    return { text: "Moderate", color: "text-green-500" };
   };
 
   const updateCondition = (readingId, newCondition) => {
@@ -121,8 +121,12 @@ export default function PitaToscaDashboard() {
     return sum / data.length;
   };
 
-  const roundToNearest5 = (num) => {
-    return Math.round(num / 5) * 5;
+  const customRoundDosage = (num) => {
+    if (num >= 11 && num <= 15) return 10;
+    if (num >= 16 && num <= 20) return 20;
+    if (num >= 21 && num <= 25) return 20;
+    if (num >= 26 && num <= 30) return 30;
+    return Math.round(num / 10) * 10;
   };
 
   const trapezoidalMembership = (x, a, b, c, d) => {
@@ -184,7 +188,7 @@ export default function PitaToscaDashboard() {
     return {
       bpm: Math.round(bpm * 10) / 10,
       tremor: Math.round(tremor * 100) / 100,
-      dosage: roundToNearest5(predictedDosage),
+      dosage: customRoundDosage(predictedDosage),
     };
   };
 
@@ -462,36 +466,49 @@ export default function PitaToscaDashboard() {
                       </p>
                       <div className="space-y-2">
                         <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Heart Rate:</span>
-                          <span
-                            className={`text-sm font-medium ${getHeartRateStatus(
-                              prediction.bpm
-                            ).color}`}
-                          >
-                            {prediction.bpm.toFixed(1)} bpm
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Tremor:</span>
-                          <span
-                            className={`text-sm font-medium ${getTremorStatus(
-                              prediction.tremor
-                            ).color}`}
-                          >
-                            {prediction.tremor.toFixed(2)} Hz
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">
+                          <span className="text-sm text-gray-600 font-bold">
                             Recommended Dose:
                           </span>
                           <span
-                            className={`text-sm font-medium ${getDosageStatus(
+                            className={`text-sm font-bold ${getDosageStatus(
                               prediction.dosage
                             ).color}`}
                           >
                             {prediction.dosage} mg
                           </span>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-gray-600 font-bold">
+                            Suggested Intake Schedule:
+                          </p>
+                          {prediction.dosage === 10 && (
+                            <div>
+                              <p className="text-sm text-teal-800 italic">once a day</p>
+                              <p className="text-sm text-gray-600">Morning (07:00): 10 mg</p>
+                            </div>
+                          )}
+                          {prediction.dosage === 20 && (
+                            <div>
+                              <p className="text-sm text-teal-800 italic">twice a day</p>
+                              <p className="text-sm text-gray-600">Morning (07:00): 10 mg</p>
+                              <p className="text-sm text-gray-600">Evening (19:00): 10 mg</p>
+                            </div>
+                          )}
+                          {prediction.dosage === 30 && (
+                            <div>
+                              <p className="text-sm text-teal-800 italic">three times a day</p>
+                              <p className="text-sm text-gray-600">Morning (07:00): 10 mg</p>
+                              <p className="text-sm text-gray-600">Afternoon (12:00): 10 mg</p>
+                              <p className="text-sm text-gray-600">Evening (19:00): 10 mg</p>
+                            </div>
+                          )}
+                          {prediction.dosage === 40 && (
+                            <div>
+                              <p className="text-sm text-teal-800 italic">twice a day</p>
+                              <p className="text-sm text-gray-600">Morning (07:00): 20 mg</p>
+                              <p className="text-sm text-gray-600">Evening (19:00): 20 mg</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="mt-4 p-2 bg-blue-50 rounded border border-blue-100">
