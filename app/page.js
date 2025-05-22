@@ -450,7 +450,7 @@ export default function PitaToscaDashboard() {
 
             <div className="bg-white p-4 rounded-lg shadow-md w-[340px] h-[320px]">
               <div className="flex justify-between items-center mb-2">
-                <h2 className="text-lg font-semibold text-gray-800">AI Prediction</h2>
+                <h2 className="text-lg font-semibold text-gray-800">Prediction</h2>
               </div>
               <div className="overflow-hidden">
                 {prediction ? (
