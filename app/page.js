@@ -14,49 +14,55 @@ export default function PitaToscaDashboard() {
   });
   const [historyData, setHistoryData] = useState([]);
   const [originalHistoryData, setOriginalHistoryData] = useState(null);
-  const [referenceDate, setReferenceDate] = useState(null);
   const [initialPredictionDate, setInitialPredictionDate] = useState(null);
 
-  const resetHistory = () => {
-    const patientId = "patient001";
-    const readingsRef = ref(database, `/patients/${patientId}/readings`);
+  const patientId = "patient001";
+  const readingsRef = ref(database, `/patients/${patientId}/readings`);
+  const predictionDateRef = ref(database, `/patients/${patientId}/predictionDate`);
 
-    if (historyData.length > 0) {
-      console.log("Saving history data before reset:", historyData);
-      setOriginalHistoryData([...historyData]);
-    } else {
-      console.log("No history data to save before reset.");
-      setOriginalHistoryData(null);
+  const resetHistory = async () => {
+    try {
+      // Save current history before reset
+      if (historyData.length > 0) {
+        console.log("Saving history data before reset:", historyData);
+        setOriginalHistoryData([...historyData]);
+      } else {
+        console.log("No history data to save before reset.");
+        setOriginalHistoryData(null);
+      }
+
+      // Reset data in Firebase
+      await set(readingsRef, null);
+      setHistoryData([]);
+      setSensorData({ bpm: 0, tremor: 0, dosage: 0, condition: "" });
+
+      // Set new prediction date (10 days from May 28, 2025)
+      const newRefDate = new Date("2025-05-28").getTime();
+      const newPredDate = new Date(newRefDate + 10 * 24 * 60 * 60 * 1000); // June 7, 2025
+      await set(predictionDateRef, newPredDate.toISOString());
+      setInitialPredictionDate(newPredDate);
+    } catch (error) {
+      console.error("Error resetting data:", error);
     }
-
-    setHistoryData([]);
-    setSensorData({ bpm: 0, tremor: 0, dosage: 0, condition: "" });
-    set(readingsRef, null);
-    const newRefDate = Date.now();
-    setReferenceDate(newRefDate);
-    const newPredDate = new Date(newRefDate + 10 * 24 * 60 * 60 * 1000);
-    setInitialPredictionDate(newPredDate);
   };
 
   const undoReset = async () => {
     if (originalHistoryData && originalHistoryData.length > 0) {
-      const patientId = "patient001";
-      const readingsRef = ref(database, `/patients/${patientId}/readings`);
-
-      console.log("Restoring data:", originalHistoryData);
-
-      const dataToRestore = {};
-      originalHistoryData.forEach((item) => {
-        dataToRestore[item.id] = {
-          bpm: item.bpm || 0,
-          tremor: item.tremor || 0,
-          dosage: item.dosage || 0,
-          timestamp: item.timestamp || new Date().toISOString(),
-          condition: item.condition || "normal_activity",
-        };
-      });
-
       try {
+        console.log("Restoring data:", originalHistoryData);
+
+        const dataToRestore = {};
+        originalHistoryData.forEach((item) => {
+          dataToRestore[item.id] = {
+            bpm: item.bpm || 0,
+            tremor: item.tremor || 0,
+            dosage: item.dosage || 0,
+            timestamp: item.timestamp || new Date().toISOString(),
+            condition: item.condition || "normal_activity",
+          };
+        });
+
+        // Restore data to Firebase
         await set(readingsRef, dataToRestore);
         console.log("Data successfully restored to Firebase.");
 
@@ -77,12 +83,13 @@ export default function PitaToscaDashboard() {
           });
         }
 
-        setOriginalHistoryData(null);
-        setReferenceDate(null);
-
+        // Restore prediction date based on first timestamp
         const firstTimestamp = new Date(restoredData[0].timestamp).getTime();
         const restoredPredDate = new Date(firstTimestamp + 10 * 24 * 60 * 60 * 1000);
+        await set(predictionDateRef, restoredPredDate.toISOString());
         setInitialPredictionDate(restoredPredDate);
+
+        setOriginalHistoryData(null);
       } catch (error) {
         console.error("Error restoring data to Firebase:", error);
       }
@@ -110,7 +117,6 @@ export default function PitaToscaDashboard() {
   };
 
   const updateCondition = (readingId, newCondition) => {
-    const patientId = "patient001";
     const readingRef = ref(database, `/patients/${patientId}/readings/${readingId}`);
     update(readingRef, { condition: newCondition });
   };
@@ -162,7 +168,7 @@ export default function PitaToscaDashboard() {
       { if: { bpm: "tinggi", tremor: "berat" }, then: { dosage: "tinggi" } },
     ];
 
-    const activations = rules.map(rule => {
+    const activations = rules.map((rule) => {
       const bpmDegree = bpmMembership[rule.if.bpm];
       const tremorDegree = tremorMembership[rule.if.tremor];
       const activation = Math.min(bpmDegree, tremorDegree);
@@ -177,7 +183,8 @@ export default function PitaToscaDashboard() {
       },
     };
 
-    let dosageSum = 0, dosageWeight = 0;
+    let dosageSum = 0,
+      dosageWeight = 0;
     activations.forEach(({ activation, output }) => {
       dosageSum += outputRanges.dosage[output.dosage] * activation;
       dosageWeight += activation;
@@ -200,25 +207,23 @@ export default function PitaToscaDashboard() {
 
     const { bpm, tremor, dosage } = applyFuzzyLogic(avgBpm, avgTremor);
 
-    const predictionDate = initialPredictionDate;
-
     return {
       bpm,
       tremor,
       dosage,
-      date: predictionDate.toLocaleDateString("en-ID", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      }),
+      date: initialPredictionDate
+        ? initialPredictionDate.toLocaleDateString("en-ID", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          })
+        : "Not set",
     };
   };
 
   useEffect(() => {
-    const patientId = "patient001";
-    const readingsRef = ref(database, `/patients/${patientId}/readings`);
-
-    const unsubscribe = onValue(readingsRef, (snapshot) => {
+    // Listen for readings data
+    const unsubscribeReadings = onValue(readingsRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
         const dataArray = Object.entries(data)
@@ -237,12 +242,6 @@ export default function PitaToscaDashboard() {
             dosage: dataArray[0].dosage,
             condition: dataArray[0].condition || "normal_activity",
           });
-
-          if (!initialPredictionDate && !referenceDate) {
-            const firstTimestamp = new Date(dataArray[0].timestamp).getTime();
-            const predDate = new Date(firstTimestamp + 10 * 24 * 60 * 60 * 1000);
-            setInitialPredictionDate(predDate);
-          }
         }
         setHistoryData(dataArray);
       } else {
@@ -251,10 +250,30 @@ export default function PitaToscaDashboard() {
         if (!originalHistoryData) setHistoryData([]);
       }
     }, (error) => {
-      console.error("Error fetching data from Firebase:", error);
+      console.error("Error fetching readings from Firebase:", error);
     });
 
-    return () => off(readingsRef);
+    // Listen for prediction date
+    const unsubscribePredictionDate = onValue(predictionDateRef, (snapshot) => {
+      const predDate = snapshot.val();
+      if (predDate) {
+        setInitialPredictionDate(new Date(predDate));
+      } else {
+        // If no prediction date in Firebase, set default (May 28, 2025 + 10 days)
+        const defaultRefDate = new Date("2025-05-28").getTime();
+        const defaultPredDate = new Date(defaultRefDate + 10 * 24 * 60 * 60 * 1000);
+        set(predictionDateRef, defaultPredDate.toISOString());
+        setInitialPredictionDate(defaultPredDate);
+      }
+    }, (error) => {
+      console.error("Error fetching prediction date from Firebase:", error);
+    });
+
+    // Cleanup subscriptions
+    return () => {
+      off(readingsRef);
+      off(predictionDateRef);
+    };
   }, []);
 
   const heartStatus = getHeartRateStatus(sensorData.bpm);
