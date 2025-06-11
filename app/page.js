@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { database } from "../app/config/firebase";
 import { ref, onValue, off, set, update } from "firebase/database";
+import { Chart } from 'chart.js/auto';
 
 export default function PitaToscaDashboard() {
   const [profileImage, setProfileImage] = useState("/tiroid.png");
@@ -16,6 +17,9 @@ export default function PitaToscaDashboard() {
   const [originalHistoryData, setOriginalHistoryData] = useState(null);
   const [initialPredictionDate, setInitialPredictionDate] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [tremorChart, setTremorChart] = useState(null);
+  const [heartRateChart, setHeartRateChart] = useState(null);
+  const [doseChart, setDoseChart] = useState(null);
 
   const patientId = "patient001";
   const readingsRef = ref(database, `/patients/${patientId}/readings`);
@@ -239,6 +243,57 @@ export default function PitaToscaDashboard() {
           });
         }
         setHistoryData(dataArray);
+
+        // Update charts
+        if (tremorChart) tremorChart.destroy();
+        if (heartRateChart) heartRateChart.destroy();
+        if (doseChart) doseChart.destroy();
+
+        const ctxTremor = document.getElementById('tremorChart').getContext('2d');
+        const ctxHeartRate = document.getElementById('heartRateChart').getContext('2d');
+        const ctxDose = document.getElementById('doseChart').getContext('2d');
+
+        setTremorChart(new Chart(ctxTremor, {
+          type: 'line',
+          data: {
+            labels: dataArray.map(item => new Date(item.timestamp).toLocaleDateString()),
+            datasets: [{
+              label: 'Tremor (Hz)',
+              data: dataArray.map(item => item.tremor),
+              borderColor: 'rgba(75, 192, 192, 1)',
+              tension: 0.1
+            }]
+          },
+          options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        }));
+
+        setHeartRateChart(new Chart(ctxHeartRate, {
+          type: 'line',
+          data: {
+            labels: dataArray.map(item => new Date(item.timestamp).toLocaleDateString()),
+            datasets: [{
+              label: 'Heart Rate (bpm)',
+              data: dataArray.map(item => item.bpm),
+              borderColor: 'rgba(255, 99, 132, 1)',
+              tension: 0.1
+            }]
+          },
+          options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        }));
+
+        setDoseChart(new Chart(ctxDose, {
+          type: 'line',
+          data: {
+            labels: dataArray.map(item => new Date(item.timestamp).toLocaleDateString()),
+            datasets: [{
+              label: 'Dose (mg)',
+              data: dataArray.map(item => item.dosage),
+              borderColor: 'rgba(54, 162, 235, 1)',
+              tension: 0.1
+            }]
+          },
+          options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        }));
       } else {
         console.log("No data in Firebase, resetting local state.");
         setSensorData({ bpm: 0, tremor: 0, dosage: 0, condition: "" });
@@ -265,6 +320,9 @@ export default function PitaToscaDashboard() {
     return () => {
       off(readingsRef);
       off(predictionDateRef);
+      if (tremorChart) tremorChart.destroy();
+      if (heartRateChart) heartRateChart.destroy();
+      if (doseChart) doseChart.destroy();
     };
   }, []);
 
@@ -393,6 +451,18 @@ export default function PitaToscaDashboard() {
                     </p>
                     <p className={`text-sm ${dosageStatus.color}`}>{dosageStatus.text}</p>
                   </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white p-4 rounded-lg shadow-md">
+                  <canvas id="tremorChart" height="300"></canvas>
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-md">
+                  <canvas id="heartRateChart" height="300"></canvas>
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-md">
+                  <canvas id="doseChart" height="300"></canvas>
                 </div>
               </div>
             </>
