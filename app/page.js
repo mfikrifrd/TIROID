@@ -470,7 +470,7 @@ export default function PitaToscaDashboard() {
           {currentPage === 2 && (
             <>
               <div className="flex gap-4">
-                <div className="bg-white p-4 rounded-lg shadow-md w-[700px] h-[320px]">
+                <div className="bg-white p-4 rounded-lg shadow-md w-[700px] h-[550px]">
                   <div className="flex justify-between items-center mb-2">
                     <h2 className="text-lg font-semibold text-gray-800">History</h2>
                     <div className="space-x-2">
@@ -492,7 +492,7 @@ export default function PitaToscaDashboard() {
                       )}
                     </div>
                   </div>
-                  <div className="overflow-y-auto max-h-60">
+                  <div className="overflow-y-auto max-h-115">
                     <table className="w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
@@ -514,7 +514,7 @@ export default function PitaToscaDashboard() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {historyData.slice(0, 100).map((item, index) => (
+                        {historyData.slice(0, 200).map((item, index) => (
                           <tr key={item.id || index}>
                             <td className="px-2 py-4 whitespace-normal text-sm text-gray-500 w-[150px]">
                               {item.timestamp}
@@ -622,6 +622,15 @@ export default function PitaToscaDashboard() {
                         <p className="text-sm text-gray-500">Not enough data for prediction</p>
                       </div>
                     )}
+                    </div>
+                  {/* Adding both #Hipertiroidisme and #PeriksaLeherAnda as non-clickable buttons */}
+                  <div className="mt-54 text-sm text-teal-200 flex space-x-2">
+                    <span className="px-3 py-1 bg-teal-600 text-white rounded-lg cursor-default">
+                      #Hipertiroidisme
+                    </span>
+                    <span className="px-3 py-1 bg-teal-600 text-white rounded-lg cursor-default">
+                      #PeriksaLeherAnda
+                    </span>
                   </div>
                 </div>
               </div>
