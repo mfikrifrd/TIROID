@@ -386,7 +386,7 @@ export default function PitaToscaDashboard() {
               </div>
             </label>
           </div>
-          <div className="text-4xl font-bold flex flex-col items-center tracking-widest mt-24 md:mt-32">
+          <div className="text-4xl font-bold flex flex-col items-center tracking-widest mt-24 md:mt-22">
             <span className="relative top-[-4px]">P</span>
             <span className="relative top-[-4px]">I</span>
             <span className="relative top-[-4px]">T</span>
@@ -398,7 +398,7 @@ export default function PitaToscaDashboard() {
             <span>C</span>
             <span>A</span>
           </div>
-          <div className="mt-4 flex justify-center space-x-2">
+          <div className="mt-8 flex justify-center space-x-2">
             <button
               onClick={() => goToPage(1)}
               className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
