@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { database } from "../app/config/firebase";
 import { ref, onValue, off, set, update } from "firebase/database";
-import { Chart } from 'chart.js/auto';
+import { Chart } from "chart.js/auto";
+import * as XLSX from "xlsx";
 
 export default function PitaToscaDashboard() {
   const [profileImage, setProfileImage] = useState("/tiroid.png");
@@ -221,6 +222,21 @@ export default function PitaToscaDashboard() {
     };
   };
 
+  const downloadHistoryData = () => {
+    const worksheet = XLSX.utils.json_to_sheet(
+      historyData.map((item) => ({
+        Date: item.timestamp,
+        Condition: item.condition,
+        "Heart Rate (bpm)": item.bpm,
+        Tremor: item.tremor,
+        Dosage: item.dosage,
+      }))
+    );
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "History");
+    XLSX.writeFile(workbook, "history_data.xlsx");
+  };
+
   useEffect(() => {
     const unsubscribeReadings = onValue(readingsRef, (snapshot) => {
       const data = snapshot.val();
@@ -244,56 +260,73 @@ export default function PitaToscaDashboard() {
         }
         setHistoryData(dataArray);
 
-        // Update charts
         if (tremorChart) tremorChart.destroy();
         if (heartRateChart) heartRateChart.destroy();
         if (doseChart) doseChart.destroy();
 
-        const ctxTremor = document.getElementById('tremorChart').getContext('2d');
-        const ctxHeartRate = document.getElementById('heartRateChart').getContext('2d');
-        const ctxDose = document.getElementById('doseChart').getContext('2d');
+        const ctxTremor = document.getElementById("tremorChart").getContext("2d");
+        const ctxHeartRate = document.getElementById("heartRateChart").getContext("2d");
+        const ctxDose = document.getElementById("doseChart").getContext("2d");
 
-        setTremorChart(new Chart(ctxTremor, {
-          type: 'line',
-          data: {
-            labels: dataArray.map(item => new Date(item.timestamp).toLocaleDateString()),
-            datasets: [{
-              label: 'Tremor (Hz)',
-              data: dataArray.map(item => item.tremor),
-              borderColor: 'rgba(75, 192, 192, 1)',
-              tension: 0.1
-            }]
-          },
-          options: { responsive: true, scales: { y: { beginAtZero: true } } }
-        }));
+        setTremorChart(
+          new Chart(ctxTremor, {
+            type: "line",
+            data: {
+              labels: dataArray.map((item) =>
+                new Date(item.timestamp).toLocaleDateString()
+              ),
+              datasets: [
+                {
+                  label: "Tremor (Hz)",
+                  data: dataArray.map((item) => item.tremor),
+                  borderColor: "rgba(75, 192, 192, 1)",
+                  tension: 0.1,
+                },
+              ],
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } },
+          })
+        );
 
-        setHeartRateChart(new Chart(ctxHeartRate, {
-          type: 'line',
-          data: {
-            labels: dataArray.map(item => new Date(item.timestamp).toLocaleDateString()),
-            datasets: [{
-              label: 'Heart Rate (bpm)',
-              data: dataArray.map(item => item.bpm),
-              borderColor: 'rgba(255, 99, 132, 1)',
-              tension: 0.1
-            }]
-          },
-          options: { responsive: true, scales: { y: { beginAtZero: true } } }
-        }));
+        setHeartRateChart(
+          new Chart(ctxHeartRate, {
+            type: "line",
+            data: {
+              labels: dataArray.map((item) =>
+                new Date(item.timestamp).toLocaleDateString()
+              ),
+              datasets: [
+                {
+                  label: "Heart Rate (bpm)",
+                  data: dataArray.map((item) => item.bpm),
+                  borderColor: "rgba(255, 99, 132, 1)",
+                  tension: 0.1,
+                },
+              ],
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } },
+          })
+        );
 
-        setDoseChart(new Chart(ctxDose, {
-          type: 'line',
-          data: {
-            labels: dataArray.map(item => new Date(item.timestamp).toLocaleDateString()),
-            datasets: [{
-              label: 'Dose (mg)',
-              data: dataArray.map(item => item.dosage),
-              borderColor: 'rgba(54, 162, 235, 1)',
-              tension: 0.1
-            }]
-          },
-          options: { responsive: true, scales: { y: { beginAtZero: true } } }
-        }));
+        setDoseChart(
+          new Chart(ctxDose, {
+            type: "line",
+            data: {
+              labels: dataArray.map((item) =>
+                new Date(item.timestamp).toLocaleDateString()
+              ),
+              datasets: [
+                {
+                  label: "Dose (mg)",
+                  data: dataArray.map((item) => item.dosage),
+                  borderColor: "rgba(54, 162, 235, 1)",
+                  tension: 0.1,
+                },
+              ],
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } },
+          })
+        );
       } else {
         console.log("No data in Firebase, resetting local state.");
         setSensorData({ bpm: 0, tremor: 0, dosage: 0, condition: "" });
@@ -336,10 +369,10 @@ export default function PitaToscaDashboard() {
   };
 
   return (
-    <div className="bg-teal-800 flex justify-center items-center min-h-screen">
-      <div className="bg-teal-800 text-white p-6 rounded-xl w-full max-w-7xl min-h-screen flex">
-        <div className="bg-red-700 w-32 flex flex-col items-center py-8 text-white relative rounded-2xl">
-          <div className="w-32 h-32 flex justify-center items-center absolute top-6">
+    <div className="bg-teal-800 flex justify-center items-start min-h-screen p-4">
+      <div className="bg-teal-800 text-white rounded-xl w-full max-w-7xl flex flex-col md:flex-row">
+        <div className="bg-red-700 w-32 h-auto md:h-[600px] flex flex-col items-center py-4 text-white relative rounded-2xl mb-4 md:mb-0">
+          <div className="w-32 h-32 flex justify-center items-center absolute top-4 md:top-6">
             <label htmlFor="uploadImage" className="cursor-pointer block">
               <div className="relative w-32 h-32">
                 <Image
@@ -353,7 +386,7 @@ export default function PitaToscaDashboard() {
               </div>
             </label>
           </div>
-          <div className="text-4xl font-bold flex flex-col items-center tracking-widest mt-16">
+          <div className="text-4xl font-bold flex flex-col items-center tracking-widest mt-24 md:mt-32">
             <span className="relative top-[-4px]">P</span>
             <span className="relative top-[-4px]">I</span>
             <span className="relative top-[-4px]">T</span>
@@ -365,7 +398,7 @@ export default function PitaToscaDashboard() {
             <span>C</span>
             <span>A</span>
           </div>
-          <div className="mt-12 flex justify-center space-x-2">
+          <div className="mt-4 flex justify-center space-x-2">
             <button
               onClick={() => goToPage(1)}
               className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
@@ -387,11 +420,15 @@ export default function PitaToscaDashboard() {
               <div className="flex items-center justify-between mb-4">
                 <h1 className="text-2xl font-bold">#PejuangTiroid</h1>
                 <span className="text-sm text-gray-300">
-                  {new Date().toLocaleDateString("en-ID", {
+                  {new Date().toLocaleString("en-ID", {
+                    weekday: "long",
                     year: "numeric",
                     month: "long",
                     day: "numeric",
-                  })}
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  }) + " WIB"}
                 </span>
               </div>
 
@@ -469,8 +506,8 @@ export default function PitaToscaDashboard() {
           )}
           {currentPage === 2 && (
             <>
-              <div className="flex gap-4">
-                <div className="bg-white p-4 rounded-lg shadow-md w-[700px] h-[550px]">
+              <div className="flex justify-between w-full gap-4">
+                <div className="bg-white p-4 rounded-lg shadow-md w-2/3 h-[550px]">
                   <div className="flex justify-between items-center mb-2">
                     <h2 className="text-lg font-semibold text-gray-800">History</h2>
                     <div className="space-x-2">
@@ -492,7 +529,7 @@ export default function PitaToscaDashboard() {
                       )}
                     </div>
                   </div>
-                  <div className="overflow-y-auto max-h-115">
+                  <div className="overflow-y-auto max-h-[450px]">
                     <table className="w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
@@ -517,7 +554,7 @@ export default function PitaToscaDashboard() {
                         {historyData.slice(0, 200).map((item, index) => (
                           <tr key={item.id || index}>
                             <td className="px-2 py-4 whitespace-normal text-sm text-gray-500 w-[150px]">
-                              {item.timestamp}
+                              {new Date(item.timestamp).toLocaleString()}
                             </td>
                             <td className="px-2 py-4 whitespace-normal text-sm text-gray-500 w-[140px]">
                               <select
@@ -546,7 +583,7 @@ export default function PitaToscaDashboard() {
                   </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-lg shadow-md w-[340px] h-[320px]">
+                <div className="bg-white p-4 rounded-lg shadow-md w-1/3 h-[320px]">
                   <div className="flex justify-between items-center mb-2">
                     <h2 className="text-lg font-semibold text-gray-800">Prediction</h2>
                   </div>
@@ -622,9 +659,14 @@ export default function PitaToscaDashboard() {
                         <p className="text-sm text-gray-500">Not enough data for prediction</p>
                       </div>
                     )}
-                    </div>
-                  {/* Adding both #Hipertiroidisme and #PeriksaLeherAnda as non-clickable buttons */}
-                  <div className="mt-54 text-sm text-teal-200 flex space-x-2">
+                  </div>
+                  <button
+                    onClick={downloadHistoryData}
+                    className="mt-15 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 w-full"
+                  >
+                    Download History Data
+                  </button>
+                  <div className="mt-29 text-sm text-teal-200 flex space-x-2">
                     <span className="px-3 py-1 bg-teal-600 text-white rounded-lg cursor-default">
                       #Hipertiroidisme
                     </span>
